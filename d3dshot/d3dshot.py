@@ -9,6 +9,11 @@ from d3dshot.display import Display
 from d3dshot.capture_output import CaptureOutput, CaptureOutputs
 
 
+class DataObject:
+    def __init__(self, data_dict):
+        self.__dict__ = data_dict
+
+
 class Singleton(type):
     _instances = {}
 
@@ -65,7 +70,15 @@ class D3DShot(metaclass=Singleton):
         return self._is_capturing
 
     def get_latest_frame(self):
-        return self.get_frame(0)
+        return self.get_frame(0).frame
+
+    def wait_next_frame(self, t = time.time_ns(), timeout_duration = 10 ** 9):
+        timeout = t + timeout_duration
+        while not self.get_frame(0) or (self.get_frame(0).time < t):
+            if time.time_ns() > timeout:
+                return None
+            time.sleep(0.01)
+        return self.get_frame(0).frame, self.get_frame(0).time
 
     def get_frame(self, frame_index):
         if frame_index < 0 or (frame_index + 1) > len(self.frame_buffer):
@@ -131,7 +144,7 @@ class D3DShot(metaclass=Singleton):
 
         # tuple cast to ensure an immutable frame buffer
         for i, frame in enumerate(tuple(self.frame_buffer)):
-            frame_pil = self.capture_output.to_pil(frame)
+            frame_pil = self.capture_output.to_pil(frame.frame)
             frame_pil.save(f"{directory}/{i + 1}.png")
 
     def capture(self, target_fps=60, region=None):
@@ -304,7 +317,11 @@ class D3DShot(metaclass=Singleton):
             )
 
             if frame is not None:
-                self.frame_buffer.appendleft(frame)
+                frame_record = DataObject({
+                    'frame': frame,
+                    'time': time.time_ns()
+                })
+                self.frame_buffer.appendleft(frame_record)
             else:
                 if len(self.frame_buffer):
                     self.frame_buffer.appendleft(self.frame_buffer[0])
